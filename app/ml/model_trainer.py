@@ -15,7 +15,7 @@ logger = setup_logger(__name__)
 
 @dataclass
 class ModelTrainerConfig:
-    trained_model_file_path: str = os.path.join(settings.MODEL_DIR, settings.MODEL_FILENAME)
+    trained_model_file_path: str = os.path.join(settings.READY_MODEL_DIR, settings.MODEL_FILENAME)
 
 class ModelTrainer:
     def __init__(self):

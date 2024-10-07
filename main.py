@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+import numpy as np
 from pydantic import BaseModel, HttpUrl
 import uvicorn
 from typing import Dict
@@ -39,6 +40,9 @@ def get_bulk_extractor():
 
 def get_data_ingestion():
     return DataIngestion()
+
+def get_data_transformation():
+    return DataTransformation()
 
 @app.get("/")
 async def root():
@@ -120,3 +124,34 @@ async def ingest_data(
     except Exception as e:
         logger.error(f"Error in data ingestion: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))    
+    
+
+@app.post("/api/transform_data")
+async def transform_data(
+    data_transformation: DataTransformation = Depends(get_data_transformation)
+):
+    try:
+        train_path = os.path.join(settings.TRAIN_DATA_DIR, "train_data.csv")
+        test_path = os.path.join(settings.TEST_DATA_DIR, "test_data.csv")
+
+        if not os.path.exists(train_path) or not os.path.exists(test_path):
+            raise HTTPException(status_code=400, detail="Train or test data not found. Please run data ingestion first.")
+
+        train_arr, test_arr, preprocessor_path = data_transformation.initiate_data_transformation(train_path, test_path)
+
+        # Save transformed data
+        transformed_train_path = os.path.join(settings.TRAIN_DATA_DIR, "transformed_train_data.npy")
+        transformed_test_path = os.path.join(settings.TEST_DATA_DIR, "transformed_test_data.npy")
+        
+        np.save(transformed_train_path, train_arr)
+        np.save(transformed_test_path, test_arr)
+
+        return {
+            "message": "Data transformation completed successfully",
+            "transformed_train_path": transformed_train_path,
+            "transformed_test_path": transformed_test_path,
+            "preprocessor_path": preprocessor_path
+        }
+    except Exception as e:
+        logger.error(f"Error in data transformation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
