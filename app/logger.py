@@ -1,5 +1,6 @@
 import logging
 import sys
+import os
 from app.config import settings
 
 def setup_logger(name: str) -> logging.Logger:
@@ -10,11 +11,17 @@ def setup_logger(name: str) -> logging.Logger:
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
+    # Console Handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    file_handler = logging.FileHandler("app.log")
+    # File Handler
+    log_dir = os.path.join(os.getcwd(), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file_path = os.path.join(log_dir, 'app.log')
+
+    file_handler = logging.FileHandler(log_file_path)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 

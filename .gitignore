@@ -1,0 +1,10 @@
+# Existing ignores...
+
+# Logs
+logs/
+
+
+# Existing ignores...
+
+__pycache__/
+venv/

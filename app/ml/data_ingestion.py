@@ -18,7 +18,7 @@ class DataIngestion:
         logger.info("Initiating data ingestion process.")
         try:
             df = pd.read_csv(os.path.join(settings.DATA_DIR, 'preprocessed_data.csv'))
-            logger.info("Read the dataset as dataframe")
+            logger.info("Read the dataset as dataframe Completed!")
 
             os.makedirs(os.path.dirname(self.raw_data_path), exist_ok=True)
             df.to_csv(self.raw_data_path, index=False, header=True)

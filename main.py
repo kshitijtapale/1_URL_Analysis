@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, HttpUrl
 import uvicorn
 from typing import Dict
+import os
 from app.ml.prediction import URLPredictor
 from app.ml.data_ingestion import DataIngestion
 from app.ml.data_transformation import DataTransformation
 from app.ml.model_trainer import ModelTrainer
+from app.ml.bulk_feature_extraction import BulkFeatureExtractor
 from app.config import settings
 from app.logger import setup_logger
 
@@ -22,20 +25,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-predictor = URLPredictor()
-
 class URLInput(BaseModel):
     url: HttpUrl
 
 class PredictionOutput(BaseModel):
     prediction: str
 
+def get_predictor():
+    return URLPredictor()
+
+def get_bulk_extractor():
+    return BulkFeatureExtractor()
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Malicious URL Detector API"}
 
 @app.post("/api/predict", response_model=PredictionOutput)
-async def predict(url_input: URLInput) -> Dict[str, str]:
+async def predict(url_input: URLInput, predictor: URLPredictor = Depends(get_predictor)) -> Dict[str, str]:
     try:
         logger.info(f"Received URL for prediction: {url_input.url}")
         prediction = predictor.predict(str(url_input.url))
@@ -62,5 +69,27 @@ async def train_model():
         logger.error(f"Error in model training: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=True)
+@app.post("/api/extract_features")
+async def extract_features(
+    file: UploadFile = File(...),
+    check_google_index: bool = Form(False),
+    bulk_extractor: BulkFeatureExtractor = Depends(get_bulk_extractor)
+):
+    try:
+        logger.info(f"Received file for feature extraction: {file.filename}")
+        input_file = f"temp_{file.filename}"
+        output_file = f"preprocessed_{file.filename}"
+        vis_output_dir = "visualizations"
+
+        with open(input_file, "wb") as buffer:
+            buffer.write(await file.read())
+
+        await bulk_extractor.extract_features_from_csv(input_file, output_file, check_google_index)
+        #bulk_extractor.generate_visualizations(output_file, vis_output_dir)
+
+        os.remove(input_file)  # Clean up temporary file
+
+        return FileResponse(output_file, filename=output_file)
+    except Exception as e:
+        logger.error(f"Error in feature extraction: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
