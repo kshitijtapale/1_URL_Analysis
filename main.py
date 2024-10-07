@@ -37,6 +37,9 @@ def get_predictor():
 def get_bulk_extractor():
     return BulkFeatureExtractor()
 
+def get_data_ingestion():
+    return DataIngestion()
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Malicious URL Detector API"}
@@ -93,3 +96,27 @@ async def extract_features(
     except Exception as e:
         logger.error(f"Error in feature extraction: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/api/ingest_data")
+async def ingest_data(
+    file: UploadFile = File(...),
+    data_ingestion: DataIngestion = Depends(get_data_ingestion)
+):
+    try:
+        logger.info(f"Received file for data ingestion: {file.filename}")
+        input_file = f"temp_ingestion_{file.filename}"
+
+        with open(input_file, "wb") as buffer:
+            buffer.write(await file.read())
+
+        result = data_ingestion.initiate_data_ingestion(input_file)
+
+        os.remove(input_file)  # Clean up temporary file
+
+        return {
+            "message": "Data ingestion completed successfully",
+            "file_paths": result
+        }
+    except Exception as e:
+        logger.error(f"Error in data ingestion: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))    
