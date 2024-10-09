@@ -44,6 +44,9 @@ def get_data_ingestion():
 def get_data_transformation():
     return DataTransformation()
 
+def get_model_trainer():
+    return ModelTrainer()
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Malicious URL Detector API"}
@@ -154,4 +157,32 @@ async def transform_data(
         }
     except Exception as e:
         logger.error(f"Error in data transformation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.post("/api/train_model")
+async def train_model(
+    model_trainer: ModelTrainer = Depends(get_model_trainer)
+):
+    try:
+        transformed_train_path = os.path.join(settings.TRAIN_DATA_DIR, "transformed_train_data.npy")
+        transformed_test_path = os.path.join(settings.TEST_DATA_DIR, "transformed_test_data.npy")
+
+        if not os.path.exists(transformed_train_path) or not os.path.exists(transformed_test_path):
+            raise HTTPException(status_code=400, detail="Transformed data not found. Please run data transformation first.")
+
+        # Load arrays with pickle support
+        train_array = np.load(transformed_train_path, allow_pickle=True)
+        test_array = np.load(transformed_test_path, allow_pickle=True)
+
+        result = model_trainer.initiate_model_training(train_array, test_array)
+
+        return {
+            "message": "Model training completed successfully",
+            "best_model": result["best_model_name"],
+            "model_performance": result["model_report"],
+            "model_file_path": result["model_file_path"]
+        }
+    except Exception as e:
+        logger.error(f"Error in model training: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

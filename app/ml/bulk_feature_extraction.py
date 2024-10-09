@@ -80,7 +80,7 @@ class BulkFeatureExtractor:
             raise FeatureExtractionError(
                 f"Bulk feature extraction failed: {str(e)}")
 
-    def generate_visualizations(self, input_file: str, output_dir: str) -> None:
+"""     def generate_visualizations(self, input_file: str, output_dir: str) -> None:
         try:
             logger.info(f"Generating visualizations from {input_file}")
             df = pd.read_csv(input_file)
@@ -129,3 +129,4 @@ class BulkFeatureExtractor:
             logger.error(f"Error in generating visualizations: {str(e)}")
             raise FeatureExtractionError(
                 f"Visualization generation failed: {str(e)}")
+ """

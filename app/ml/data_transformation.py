@@ -52,7 +52,7 @@ class DataTransformation:
             logger.error(f"Error in getting data transformer object: {e}")
             raise DataTransformationError(f"Error in getting data transformer object: {str(e)}")
 
-    def initiate_data_transformation(self, train_path: str, test_path: str) -> Tuple[np.ndarray, np.ndarray, str]:
+    def initiate_data_transformation(self, train_path: str, test_path: str) -> Tuple[str, str, str]:
         try:
             train_df = pd.read_csv(train_path)
             test_df = pd.read_csv(test_path)
@@ -78,15 +78,22 @@ class DataTransformation:
             train_arr = np.c_[input_feature_train_arr, np.array(target_feature_train_df)]
             test_arr = np.c_[input_feature_test_arr, np.array(target_feature_test_df)]
 
+            transformed_train_path = os.path.join(settings.TRAIN_DATA_DIR, "transformed_train_data.npy")
+            transformed_test_path = os.path.join(settings.TEST_DATA_DIR, "transformed_test_data.npy")
+
+            # Save arrays with pickle protocol
+            np.save(transformed_train_path, train_arr, allow_pickle=True)
+            np.save(transformed_test_path, test_arr, allow_pickle=True)
+
             os.makedirs(os.path.dirname(self.preprocessor_file_path), exist_ok=True)
             with open(self.preprocessor_file_path, 'wb') as f:
                 pickle.dump(preprocessor, f)
 
-            logger.info("Saved preprocessing object.")
+            logger.info("Saved preprocessing object and transformed data.")
 
             return (
-                train_arr,
-                test_arr,
+                transformed_train_path,
+                transformed_test_path,
                 self.preprocessor_file_path,
             )
 
