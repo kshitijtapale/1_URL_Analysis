@@ -2,11 +2,13 @@ import pandas as pd
 from app.ml.feature_extraction import FeatureExtractor
 from app.logger import setup_logger
 from app.exceptions import FeatureExtractionError
-from typing import List, Dict
+from typing import List, Dict, Optional
 import os
 import asyncio
 import aiohttp
 import random
+import glob
+from fastapi import UploadFile
 
 logger = setup_logger(__name__)
 
@@ -14,6 +16,8 @@ logger = setup_logger(__name__)
 class BulkFeatureExtractor:
     def __init__(self):
         self.feature_extractor = FeatureExtractor()
+        self.raw_dataset_dir = "artifacts/raw_dataset"
+        self.extracted_data_dir = "artifacts/extracted_data"
         self.max_retries = 3
         self.base_delay = 1  # Base delay in seconds
 
@@ -47,14 +51,33 @@ class BulkFeatureExtractor:
                 session, url, semaphore) for url in urls]
             return await asyncio.gather(*tasks)
 
-    async def extract_features_from_csv(self, input_file: str, output_file: str, check_google_index: bool = False) -> None:
+    async def extract_features_from_csv(self, check_google_index: bool = False, uploaded_file: Optional[UploadFile] = None) -> str:
         try:
-            logger.info(f"Starting feature extraction from {input_file}")
-            df = pd.read_csv(input_file)
+            # Ensure directories exist
+            os.makedirs(self.raw_dataset_dir, exist_ok=True)
+            os.makedirs(self.extracted_data_dir, exist_ok=True)
 
+            if uploaded_file:
+                # Use the uploaded file
+                input_file = os.path.join(self.raw_dataset_dir, uploaded_file.filename)
+                content = await uploaded_file.read()
+                with open(input_file, "wb") as buffer:
+                    buffer.write(content)
+                logger.info(f"Uploaded file saved as: {input_file}")
+            else:
+                # Find the latest CSV file in the raw_dataset directory
+                csv_files = glob.glob(os.path.join(self.raw_dataset_dir, "*.csv"))
+                if not csv_files:
+                    raise FileNotFoundError(f"No CSV files found in {self.raw_dataset_dir}")
+                
+                input_file = max(csv_files, key=os.path.getctime)
+            
+            logger.info(f"Processing file: {input_file}")
+
+            df = pd.read_csv(input_file)
+            
             if 'url' not in df.columns or 'type' not in df.columns:
-                raise ValueError(
-                    "Input CSV must contain 'url' and 'type' columns")
+                raise ValueError("Input CSV must contain 'url' and 'type' columns")
 
             features: List[Dict[str, int]] = []
             for url in df['url']:
@@ -64,21 +87,26 @@ class BulkFeatureExtractor:
 
             if check_google_index:
                 logger.info("Starting Google indexing check")
-                google_index_results = await self._bulk_google_index_check(df['url'].tolist())
+                google_index_results = await self._bulk_google_index_check(df['url'])
                 features_df['google_index'] = google_index_results
             else:
                 features_df['google_index'] = -1  # -1 indicates not checked
 
             result_df = pd.concat([df, features_df], axis=1)
 
+            # Generate output filename
+            input_filename = os.path.basename(input_file)
+            output_filename = f"preprocessed_{input_filename}"
+            output_file = os.path.join(self.extracted_data_dir, output_filename)
+
             result_df.to_csv(output_file, index=True, index_label='')
-            logger.info(
-                f"Feature extraction completed. Results saved to {output_file}")
+            logger.info(f"Feature extraction completed. Results saved to {output_file}")
+
+            return output_file
 
         except Exception as e:
             logger.error(f"Error in bulk feature extraction: {str(e)}")
-            raise FeatureExtractionError(
-                f"Bulk feature extraction failed: {str(e)}")
+            raise FeatureExtractionError(f"Bulk feature extraction failed: {str(e)}")
 
 """     def generate_visualizations(self, input_file: str, output_dir: str) -> None:
         try:

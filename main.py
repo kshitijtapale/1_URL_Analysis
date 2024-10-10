@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 import numpy as np
 from pydantic import BaseModel, HttpUrl
 import uvicorn
-from typing import Dict
+from typing import List, Dict, Optional
 import os
 from app.ml.url_predictor import URLPredictor
 from app.ml.data_ingestion import DataIngestion
@@ -67,6 +67,23 @@ async def predict_url(
         logger.error(f"Error in URL prediction: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/extract_features")
+async def extract_features(
+    file: Optional[UploadFile] = File(None),
+    check_google_index: bool = Form(False),
+    bulk_extractor: BulkFeatureExtractor = Depends(get_bulk_extractor)
+):
+    try:
+        output_file = await bulk_extractor.extract_features_from_csv(check_google_index, file)
+        vis_output_dir = "visualizations"
+        #bulk_extractor.generate_visualizations(output_file, vis_output_dir)
+
+        return FileResponse(output_file, filename=os.path.basename(output_file))
+    except Exception as e:
+        logger.error(f"Error in feature extraction: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/train")
 async def train_model():
     try:
@@ -84,30 +101,6 @@ async def train_model():
         logger.error(f"Error in model training: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/extract_features")
-async def extract_features(
-    file: UploadFile = File(...),
-    check_google_index: bool = Form(False),
-    bulk_extractor: BulkFeatureExtractor = Depends(get_bulk_extractor)
-):
-    try:
-        logger.info(f"Received file for feature extraction: {file.filename}")
-        input_file = f"temp_{file.filename}"
-        output_file = f"preprocessed_{file.filename}"
-        vis_output_dir = "visualizations"
-
-        with open(input_file, "wb") as buffer:
-            buffer.write(await file.read())
-
-        await bulk_extractor.extract_features_from_csv(input_file, output_file, check_google_index)
-        #bulk_extractor.generate_visualizations(output_file, vis_output_dir)
-
-        os.remove(input_file)  # Clean up temporary file
-
-        return FileResponse(output_file, filename=output_file)
-    except Exception as e:
-        logger.error(f"Error in feature extraction: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/api/ingest_data")
 async def ingest_data(
