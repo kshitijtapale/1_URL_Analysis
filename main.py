@@ -6,7 +6,7 @@ from pydantic import BaseModel, HttpUrl
 import uvicorn
 from typing import Dict
 import os
-from app.ml.prediction import URLPredictor
+from app.ml.url_predictor import URLPredictor
 from app.ml.data_ingestion import DataIngestion
 from app.ml.data_transformation import DataTransformation
 from app.ml.model_trainer import ModelTrainer
@@ -30,9 +30,10 @@ class URLInput(BaseModel):
     url: HttpUrl
 
 class PredictionOutput(BaseModel):
+    url: str
     prediction: str
 
-def get_predictor():
+def get_url_predictor():
     return URLPredictor()
 
 def get_bulk_extractor():
@@ -51,15 +52,19 @@ def get_model_trainer():
 async def root():
     return {"message": "Welcome to the Malicious URL Detector API"}
 
-@app.post("/api/predict", response_model=PredictionOutput)
-async def predict(url_input: URLInput, predictor: URLPredictor = Depends(get_predictor)) -> Dict[str, str]:
+@app.post("/api/predict_url", response_model=PredictionOutput)
+async def predict_url(
+    url_input: URLInput,
+    url_predictor: URLPredictor = Depends(get_url_predictor)
+):
     try:
-        logger.info(f"Received URL for prediction: {url_input.url}")
-        prediction = predictor.predict(str(url_input.url))
-        logger.info(f"Prediction result: {prediction}")
-        return {"prediction": prediction}
+        url = str(url_input.url)
+        logger.info(f"Received URL for prediction: {url}")
+        prediction = url_predictor.predict(url)
+        logger.info(f"Prediction result for {url}: {prediction}")
+        return {"url": url, "prediction": prediction}
     except Exception as e:
-        logger.error(f"Error in prediction: {str(e)}")
+        logger.error(f"Error in URL prediction: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/train")
@@ -186,3 +191,8 @@ async def train_model(
     except Exception as e:
         logger.error(f"Error in model training: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=True)    
