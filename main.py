@@ -13,6 +13,7 @@ from app.ml.model_trainer import ModelTrainer
 from app.ml.bulk_feature_extraction import BulkFeatureExtractor
 from app.config import settings
 from app.logger import setup_logger
+import asyncio
 
 logger = setup_logger(__name__)
 
@@ -60,7 +61,7 @@ async def predict_url(
     try:
         url = str(url_input.url)
         logger.info(f"Received URL for prediction: {url}")
-        prediction = url_predictor.predict(url)
+        prediction = await url_predictor.predict(url)  # Assuming URLPredictor.predict is now async
         logger.info(f"Prediction result for {url}: {prediction}")
         return {"url": url, "prediction": prediction}
     except Exception as e:
@@ -75,57 +76,24 @@ async def extract_features(
 ):
     try:
         output_file = await bulk_extractor.extract_features_from_csv(check_google_index, file)
-        vis_output_dir = "visualizations"
-        #bulk_extractor.generate_visualizations(output_file, vis_output_dir)
-
+        # Note: generate_visualizations is commented out, consider making it async if uncommented
         return FileResponse(output_file, filename=os.path.basename(output_file))
     except Exception as e:
         logger.error(f"Error in feature extraction: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/api/train")
-async def train_model():
-    try:
-        data_ingestion = DataIngestion()
-        train_data_path, test_data_path = data_ingestion.initiate_data_ingestion()
-
-        data_transformation = DataTransformation()
-        train_arr, test_arr, _ = data_transformation.initiate_data_transformation(train_data_path, test_data_path)
-
-        model_trainer = ModelTrainer()
-        model_report = model_trainer.initiate_model_trainer(train_arr, test_arr)
-
-        return {"message": "Model training completed successfully", "model_report": model_report}
-    except Exception as e:
-        logger.error(f"Error in model training: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    
 @app.post("/api/ingest_data")
-async def ingest_data(
-    file: UploadFile = File(...),
-    data_ingestion: DataIngestion = Depends(get_data_ingestion)
-):
+async def ingest_data():
     try:
-        logger.info(f"Received file for data ingestion: {file.filename}")
-        input_file = f"temp_ingestion_{file.filename}"
-
-        with open(input_file, "wb") as buffer:
-            buffer.write(await file.read())
-
-        result = data_ingestion.initiate_data_ingestion(input_file)
-
-        os.remove(input_file)  # Clean up temporary file
-
+        train_path, test_path = await DataIngestion.create_and_ingest()
         return {
             "message": "Data ingestion completed successfully",
-            "file_paths": result
+            "train_data_path": train_path,
+            "test_data_path": test_path
         }
     except Exception as e:
         logger.error(f"Error in data ingestion: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))    
-    
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/transform_data")
 async def transform_data(
@@ -138,14 +106,16 @@ async def transform_data(
         if not os.path.exists(train_path) or not os.path.exists(test_path):
             raise HTTPException(status_code=400, detail="Train or test data not found. Please run data ingestion first.")
 
-        train_arr, test_arr, preprocessor_path = data_transformation.initiate_data_transformation(train_path, test_path)
+        train_arr, test_arr, preprocessor_path = await data_transformation.initiate_data_transformation(train_path, test_path)  # Assuming this method is now async
 
         # Save transformed data
         transformed_train_path = os.path.join(settings.TRAIN_DATA_DIR, "transformed_train_data.npy")
         transformed_test_path = os.path.join(settings.TEST_DATA_DIR, "transformed_test_data.npy")
         
-        np.save(transformed_train_path, train_arr)
-        np.save(transformed_test_path, test_arr)
+        await asyncio.gather(
+            asyncio.to_thread(np.save, transformed_train_path, train_arr),
+            asyncio.to_thread(np.save, transformed_test_path, test_arr)
+        )
 
         return {
             "message": "Data transformation completed successfully",
@@ -156,7 +126,6 @@ async def transform_data(
     except Exception as e:
         logger.error(f"Error in data transformation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
 
 @app.post("/api/train_model")
 async def train_model(
@@ -169,11 +138,13 @@ async def train_model(
         if not os.path.exists(transformed_train_path) or not os.path.exists(transformed_test_path):
             raise HTTPException(status_code=400, detail="Transformed data not found. Please run data transformation first.")
 
-        # Load arrays with pickle support
-        train_array = np.load(transformed_train_path, allow_pickle=True)
-        test_array = np.load(transformed_test_path, allow_pickle=True)
+        # Load arrays with pickle support (consider making this async)
+        train_array, test_array = await asyncio.gather(
+            asyncio.to_thread(np.load, transformed_train_path, allow_pickle=True),
+            asyncio.to_thread(np.load, transformed_test_path, allow_pickle=True)
+        )
 
-        result = model_trainer.initiate_model_training(train_array, test_array)
+        result = await model_trainer.initiate_model_training(train_array, test_array)  # Assuming this method is now async
 
         return {
             "message": "Model training completed successfully",
@@ -184,8 +155,6 @@ async def train_model(
     except Exception as e:
         logger.error(f"Error in model training: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=True)    
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=True) 
