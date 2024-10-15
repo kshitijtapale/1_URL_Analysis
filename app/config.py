@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     TEST_DATA_DIR: str = "artifacts/data_ingestion/test_data"      
     TRAIN_DATA_DIR: str = "artifacts/data_ingestion/train_data"    
     LOG_DIR: str = "logs"
-    MODEL_FILENAME: str = "final_ready_model.pkl"
-    PREPROCESSOR_FILENAME: str = "model_preprocessor.pkl"
+    MODEL_FILENAME: str = "Best_Model.pkl"
+    PREPROCESSOR_FILENAME: str = "preprocessor.pkl"
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
 

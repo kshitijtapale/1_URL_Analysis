@@ -9,67 +9,58 @@ import aiohttp
 import random
 import glob
 from fastapi import UploadFile
+from app.config import settings
 
 logger = setup_logger(__name__)
-
 
 class BulkFeatureExtractor:
     def __init__(self):
         self.feature_extractor = FeatureExtractor()
-        self.raw_dataset_dir = "artifacts/raw_dataset"
-        self.extracted_data_dir = "artifacts/extracted_data"
+        self.raw_dataset_dir = settings.RAW_DATASET
+        self.extracted_data_dir = settings.EXTRACTED_DATA
         self.max_retries = 3
         self.base_delay = 1  # Base delay in seconds
 
-    async def _check_google_index(self, session, url, semaphore):
-        async with semaphore:
-            for attempt in range(self.max_retries):
-                try:
-                    async with session.get(f"http://google.com/search?q=site:{url}", allow_redirects=False) as response:
-                        if response.status == 200:
-                            return 1
-                        elif response.status == 429:
-                            delay = self.base_delay * \
-                                (2 ** attempt) + random.uniform(0, 1)
-                            logger.warning(f"Rate limit hit for {
-                                           url}. Retrying in {delay:.2f} seconds.")
-                            await asyncio.sleep(delay)
-                        else:
-                            return 0
-                except Exception as e:
-                    logger.warning(f"Error checking Google index for {
-                                   url}: {str(e)}")
-                    await asyncio.sleep(1)
-            logger.error(f"Failed to check Google index for {
-                         url} after {self.max_retries} attempts.")
-            return 0
+    # async def _check_google_index(self, session, url, semaphore):
+    #     async with semaphore:
+    #         for attempt in range(self.max_retries):
+    #             try:
+    #                 async with session.get(f"http://google.com/search?q=site:{url}", allow_redirects=False) as response:
+    #                     if response.status == 200:
+    #                         return 1
+    #                     elif response.status == 429:
+    #                         delay = self.base_delay * (2 ** attempt) + random.uniform(0, 1)
+    #                         logger.warning(f"Rate limit hit for {url}. Retrying in {delay:.2f} seconds.")
+    #                         await asyncio.sleep(delay)
+    #                     else:
+    #                         return 0
+    #             except Exception as e:
+    #                 logger.warning(f"Error checking Google index for {url}: {str(e)}")
+    #                 await asyncio.sleep(1)
+    #         logger.error(f"Failed to check Google index for {url} after {self.max_retries} attempts.")
+    #         return 0
 
-    async def _bulk_google_index_check(self, urls):
-        async with aiohttp.ClientSession() as session:
-            semaphore = asyncio.Semaphore(5)  # Limit concurrent requests
-            tasks = [self._check_google_index(
-                session, url, semaphore) for url in urls]
-            return await asyncio.gather(*tasks)
+    # async def _bulk_google_index_check(self, urls):
+    #     async with aiohttp.ClientSession() as session:
+    #         semaphore = asyncio.Semaphore(5)  # Limit concurrent requests
+    #         tasks = [self._check_google_index(session, url, semaphore) for url in urls]
+    #         return await asyncio.gather(*tasks)
 
     async def extract_features_from_csv(self, check_google_index: bool = False, uploaded_file: Optional[UploadFile] = None) -> str:
         try:
-            # Ensure directories exist
             os.makedirs(self.raw_dataset_dir, exist_ok=True)
             os.makedirs(self.extracted_data_dir, exist_ok=True)
 
             if uploaded_file:
-                # Use the uploaded file
                 input_file = os.path.join(self.raw_dataset_dir, uploaded_file.filename)
                 content = await uploaded_file.read()
                 with open(input_file, "wb") as buffer:
                     buffer.write(content)
                 logger.info(f"Uploaded file saved as: {input_file}")
             else:
-                # Find the latest CSV file in the raw_dataset directory
                 csv_files = glob.glob(os.path.join(self.raw_dataset_dir, "*.csv"))
                 if not csv_files:
                     raise FileNotFoundError(f"No CSV files found in {self.raw_dataset_dir}")
-                
                 input_file = max(csv_files, key=os.path.getctime)
             
             logger.info(f"Processing file: {input_file}")
@@ -85,16 +76,15 @@ class BulkFeatureExtractor:
 
             features_df = pd.DataFrame(features)
 
-            if check_google_index:
-                logger.info("Starting Google indexing check")
-                google_index_results = await self._bulk_google_index_check(df['url'])
-                features_df['google_index'] = google_index_results
-            else:
-                features_df['google_index'] = -1  # -1 indicates not checked
+            # if check_google_index:
+            #     logger.info("Starting Google indexing check")
+            #     google_index_results = await self._bulk_google_index_check(df['url'])
+            #     features_df['google_index'] = google_index_results
+            # else:
+            #     features_df['google_index'] = features_df['google_index'].fillna(-1)  # -1 indicates not checked
 
             result_df = pd.concat([df, features_df], axis=1)
 
-            # Generate output filename
             input_filename = os.path.basename(input_file)
             output_filename = f"preprocessed_{input_filename}"
             output_file = os.path.join(self.extracted_data_dir, output_filename)
@@ -108,7 +98,8 @@ class BulkFeatureExtractor:
             logger.error(f"Error in bulk feature extraction: {str(e)}")
             raise FeatureExtractionError(f"Bulk feature extraction failed: {str(e)}")
 
-"""     def generate_visualizations(self, input_file: str, output_dir: str) -> None:
+    """
+    def generate_visualizations(self, input_file: str, output_dir: str) -> None:
         try:
             logger.info(f"Generating visualizations from {input_file}")
             df = pd.read_csv(input_file)
@@ -157,4 +148,4 @@ class BulkFeatureExtractor:
             logger.error(f"Error in generating visualizations: {str(e)}")
             raise FeatureExtractionError(
                 f"Visualization generation failed: {str(e)}")
- """
+    """
